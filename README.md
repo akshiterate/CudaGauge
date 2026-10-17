@@ -71,7 +71,7 @@ Workloads: `vecadd`, `reduce`, `matmul`, or `all`.
 
 ---
 
-## What we discovered: formula vs. manual search
+## What I discovered: formula vs. manual search
 
 The core finding of this project: **neither method wins universally.** Here is what the experiments showed on an RTX 2050 (see `explanations/EXPERIMENT_LOG.md` for the full data):
 
