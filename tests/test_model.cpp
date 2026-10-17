@@ -1,5 +1,6 @@
 // Unit tests for the linear formula: exact data must recover exact
-// parameters, and degenerate inputs must fail honestly.
+// parameters, degenerate inputs must fail honestly, and invalid rows
+// must never be able to distort a prediction.
 
 #include <cmath>
 #include <cstdio>
@@ -18,6 +19,26 @@ static void expect_near(double got, double want, double tol, const char* label) 
     } else {
         std::printf("PASS %s\n", label);
     }
+}
+
+static LinearFit cpu_fit_of(const std::vector<Measurement>& rows) {
+    std::vector<long long> sizes;
+    std::vector<double> times;
+    for (size_t i = 0; i < rows.size(); i++) {
+        sizes.push_back(rows[i].size_n);
+        times.push_back(rows[i].cpu_ms);
+    }
+    return fit_line(sizes, times);
+}
+
+static LinearFit gpu_fit_of(const std::vector<Measurement>& rows) {
+    std::vector<long long> sizes;
+    std::vector<double> times;
+    for (size_t i = 0; i < rows.size(); i++) {
+        sizes.push_back(rows[i].size_n);
+        times.push_back(rows[i].gpu_ms);
+    }
+    return fit_line(sizes, times);
 }
 
 int main() {
@@ -83,6 +104,73 @@ int main() {
         failures++;
     } else {
         std::printf("PASS extrapolation flag\n");
+    }
+
+    // --- P2: invalid rows can never influence a prediction ---
+    // Clean data: (x, cpu=y=1+2x, gpu=5+1x) -> crossover at x=4.
+    std::vector<Measurement> clean;
+    for (size_t i = 0; i < xs.size(); i++) {
+        Measurement m;
+        m.size_n = xs[i];
+        m.cpu_ms = ys[i];                    // 21, 41, 61, 81 (y = 1+2x)
+        m.gpu_ms = 5.0 + (double)xs[i];      // gpu = 5 + 1x
+        m.valid = true;
+        clean.push_back(m);
+    }
+    Prediction clean_pred = predict_crossover(cpu_fit_of(clean), gpu_fit_of(clean), 1, 100);
+
+    // Contaminated data: an extra invalid row with absurd times must be
+    // dropped by filter_valid and leave the prediction untouched.
+    std::vector<Measurement> contaminated = clean;
+    Measurement bad;
+    bad.size_n = 9999999;
+    bad.cpu_ms = 1.0e9;
+    bad.gpu_ms = 2.0e9;
+    bad.valid = false;  // correctness failed -> unusable by definition
+    contaminated.push_back(bad);
+    std::vector<Measurement> kept = filter_valid(contaminated);
+    if (kept.size() != clean.size()) {
+        std::printf("FAIL filter_valid size: got %d want %d\n", (int)kept.size(),
+                    (int)clean.size());
+        failures++;
+    } else {
+        std::printf("PASS filter_valid drops the invalid row\n");
+    }
+    Prediction contaminated_pred =
+        predict_crossover(cpu_fit_of(kept), gpu_fit_of(kept), 1, 100);
+    if (contaminated_pred.has_crossover != clean_pred.has_crossover ||
+        contaminated_pred.crossover_n != clean_pred.crossover_n ||
+        contaminated_pred.extrapolated != clean_pred.extrapolated) {
+        std::printf("FAIL prediction changed after filtering a bad row\n");
+        failures++;
+    } else {
+        std::printf("PASS invalid row cannot influence a prediction\n");
+    }
+
+    // Insufficient valid data: with only one valid row the fit must be
+    // refused and the prediction must report the refusal honestly.
+    std::vector<Measurement> scarce;
+    Measurement only;
+    only.size_n = 64;
+    only.cpu_ms = 130.0;
+    only.gpu_ms = 70.0;
+    only.valid = true;
+    scarce.push_back(only);
+    scarce.push_back(bad);
+    LinearFit scarce_fit = cpu_fit_of(filter_valid(scarce));
+    if (scarce_fit.ok) {
+        std::printf("FAIL fit accepted a single valid point\n");
+        failures++;
+    } else {
+        std::printf("PASS insufficient valid calibration data rejected\n");
+    }
+    Prediction scarce_pred = predict_crossover(cpu_fit_of(filter_valid(scarce)),
+                                               gpu_fit_of(filter_valid(scarce)), 1, 100);
+    if (scarce_pred.has_crossover) {
+        std::printf("FAIL prediction produced from a refused fit\n");
+        failures++;
+    } else {
+        std::printf("PASS no prediction from insufficient data\n");
     }
 
     if (failures > 0) {

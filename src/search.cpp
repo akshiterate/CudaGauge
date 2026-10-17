@@ -3,12 +3,21 @@
 // 1. Scan geometrically from start_n (each step x growth_factor) and
 //    record every size until the budget or max_n runs out.
 // 2. Collect every bracket [a, b] where the faster side changed.
-// 3. If a bracket exists, bisect it: measure midpoints, keeping the
-//    half that still brackets a sign change, for a few rounds.
-// 4. Verify the final candidate with one fresh measurement.
+// 3. If a bracket exists, bisect the FIRST one: measure midpoints,
+//    keeping the half that still brackets a sign change, for a few
+//    rounds. Later brackets stay listed in `transitions` but are NOT
+//    refined - the budget is spent on resolving one answer. Consequence
+//    documented honestly: a second, real crossover later in the range
+//    can be missed once an early double-win stops the scan.
+// 4. Verify the final candidate with up to two fresh repeat batches.
+//    Every batch must show the GPU winning; a single disagreeing batch
+//    marks the candidate unverified. This is resistant to noise without
+//    pretending noise can be eliminated.
 //
 // Honesty rules: multiple brackets are all reported; if the GPU never
-// wins, found=false; the note always states the stopping reason.
+// wins, outcome=None; structured `outcome` fields distinguish verified
+// interior, boundary candidate, unverified, and exhausted-budget cases;
+// the note always states the stopping reason.
 
 #include "cudagauge/cudagauge.h"
 
@@ -104,22 +113,55 @@ SearchResult adaptive_search(CustomWorkload& work,
             low = mid;
         }
     }
-    // 4. Verify with a fresh measurement at the candidate edge.
+    // 4. Verify the candidate edge with fresh repeat batches. Every
+    // batch is one new Measurement (a fresh median) and counts against
+    // the budget. All batches must agree that the GPU wins; if any
+    // disagrees, the candidate is reported unverified rather than
+    // guessing which batch was wrong.
     result.lower_n = low;
     result.upper_n = high;
     if ((int)result.history.size() >= budget) {
+        result.outcome = SearchOutcome::BudgetExhausted;
         result.note = "budget exhausted before verification, candidate unverified";
         return result;
     }
-    Measurement verify = run_custom_size(work, high, mode, repeats);
-    result.history.push_back(verify);
-    result.num_measurements++;
-    if (verify.valid && verify.gpu_ms < verify.cpu_ms) {
-        result.found = true;
-        result.crossover_n = high;
-        result.note = "verified: GPU faster at upper edge on fresh repeats";
+    const int max_batches = 2;
+    int passed = 0;
+    int attempted = 0;
+    while (attempted < max_batches && (int)result.history.size() < budget) {
+        Measurement verify = run_custom_size(work, high, mode, repeats);
+        result.history.push_back(verify);
+        result.num_measurements++;
+        attempted++;
+        if (verify.valid && verify.gpu_ms < verify.cpu_ms) {
+            passed++;
+        } else {
+            break;  // first disagreement decides: noisy evidence is not proof
+        }
+    }
+    result.verified = (passed == attempted && attempted > 0);
+    if (!result.verified) {
+        result.note = "fresh verification batches did not all confirm the GPU win";
+        if (result.transitions.size() > 1) {
+            result.note += " (first of multiple brackets)";
+        }
+        result.outcome = SearchOutcome::Unverified;
+        return result;
+    }
+    result.found = true;
+    result.crossover_n = high;
+    if (high >= max_n) {
+        result.outcome = SearchOutcome::BoundaryCandidate;
+        result.at_boundary = true;
+        result.note = "verified GPU win at the edge of the search window; the "
+                      "true crossover may lie at or beyond max_n";
     } else {
-        result.note = "candidate did not verify, treating as uncertain";
+        result.outcome = SearchOutcome::VerifiedInterior;
+        result.note = "verified: GPU won all fresh verification batches at the "
+                      "upper edge on fresh repeats";
+    }
+    if (result.transitions.size() > 1) {
+        result.note += " (first of multiple brackets)";
     }
     return result;
 }

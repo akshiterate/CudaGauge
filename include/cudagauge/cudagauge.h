@@ -74,10 +74,35 @@ struct SearchInterval {
     long long upper_n = 0;
 };
 
+// How the adaptive search ended, as a structured value so callers do not
+// have to parse the free-text note:
+//   None              : no sign change anywhere in the scanned range.
+//   VerifiedInterior  : candidate verified by fresh repeat batches, and
+//                       the candidate is strictly inside the scan window.
+//   BoundaryCandidate : candidate verified, but at max_n. The true
+//                       crossover may lie at or beyond the window edge;
+//                       treat as a candidate, not an established answer.
+//   Unverified        : a bracket exists but fresh verification batches
+//                       disagreed, so the candidate is uncertain.
+//   BudgetExhausted   : the measurement budget ran out before any
+//                       verification could be attempted.
+enum class SearchOutcome {
+    None,
+    VerifiedInterior,
+    BoundaryCandidate,
+    Unverified,
+    BudgetExhausted
+};
+
 // Outcome of the adaptive empirical search.
 struct SearchResult {
+    // Compatibility field: true only for VerifiedInterior and
+    // BoundaryCandidate (a fresh verified GPU win at the candidate).
     bool found = false;
-    long long crossover_n = 0;  // smallest size with confirmed GPU win
+    SearchOutcome outcome = SearchOutcome::None;
+    bool verified = false;      // all fresh verification batches GPU-won
+    bool at_boundary = false;   // crossover_n == max_n
+    long long crossover_n = 0;  // smallest verified GPU-winning size
     long long lower_n = 0;      // last size where the CPU still won
     long long upper_n = 0;      // first size where the GPU won
     int num_measurements = 0;   // how many sizes were measured
@@ -89,6 +114,13 @@ struct SearchResult {
 // Median of a copy of values. Used instead of a mean so one slow
 // outlier repeat cannot drag the reported time upwards.
 double median_of(std::vector<double> values);
+
+// SearchOutcome as a short human-readable string for logs and CSVs.
+const char* outcome_to_string(SearchOutcome outcome);
+
+// Drop invalid measurements (valid==false). Call before feeding rows to
+// fit_line so a correctness-failed row can never distort the model.
+std::vector<Measurement> filter_valid(const std::vector<Measurement>& rows);
 
 // Human-readable timing mode name for CSV files and log lines.
 std::string mode_to_string(TimingMode mode);

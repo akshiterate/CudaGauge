@@ -1,0 +1,14 @@
+workload,mode,n,cpu_ms,gpu_ms,repeats,valid
+vecadd,resident,1024,0.0001,0.059488,5,1
+vecadd,resident,4096,0.0004,0.015008,5,1
+vecadd,resident,16384,0.0016,0.011264,5,1
+vecadd,resident,65536,0.0061,0.011264,5,1
+vecadd,resident,262144,0.056,0.044032,5,1
+vecadd,resident,1048576,0.8273,0.149504,5,1
+vecadd,resident,163840,0.0339,0.028672,5,1
+vecadd,resident,65536,0.0136,0.032608,1,1
+vecadd,resident,114688,0.0204,0.022528,5,1
+vecadd,resident,65536,0.0108,0.034816,1,1
+vecadd,resident,139264,0.0366,0.052224,5,1
+vecadd,resident,114688,0.0629,0.055168,1,1
+vecadd,resident,139264,0.0358,0.044064,5,1

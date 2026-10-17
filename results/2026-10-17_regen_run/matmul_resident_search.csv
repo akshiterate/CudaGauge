@@ -1,0 +1,12 @@
+workload,mode,n,cpu_ms,gpu_ms,repeats,valid
+matmul,resident,16,0.0068,0.04608,3,1
+matmul,resident,32,0.0188,0.019456,3,1
+matmul,resident,64,0.4351,0.03584,3,1
+matmul,resident,128,3.605,0.184256,3,1
+matmul,resident,48,0.0615,0.023552,3,1
+matmul,resident,32,0.0553,0.0296,1,1
+matmul,resident,56,0.292,0.083968,3,1
+matmul,resident,48,0.0587,0.043008,1,1
+matmul,resident,60,0.3587,0.034816,3,1
+matmul,resident,56,0.2044,0.037888,1,1
+matmul,resident,64,0.435,0.044032,3,1

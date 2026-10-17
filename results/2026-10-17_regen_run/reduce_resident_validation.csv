@@ -1,0 +1,6 @@
+workload,mode,n,cpu_ms,gpu_ms,repeats,valid
+reduce,resident,8192,0.0044,0.013312,5,1
+reduce,resident,32768,0.0174,0.012288,5,1
+reduce,resident,131072,0.0711,0.021504,5,1
+reduce,resident,524288,0.2783,0.06144,5,1
+reduce,resident,2097152,1.1179,0.21504,5,1

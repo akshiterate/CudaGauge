@@ -1,0 +1,6 @@
+workload,mode,n,cpu_ms,gpu_ms,repeats,valid
+thirdparty_vectorAdd,resident,8192,0.0033,0.055392,5,1
+thirdparty_vectorAdd,resident,32768,0.012,0.069632,5,1
+thirdparty_vectorAdd,resident,131072,0.0891,0.09712,5,1
+thirdparty_vectorAdd,resident,524288,0.4665,0.161792,5,1
+thirdparty_vectorAdd,resident,2097152,2.0001,0.66048,5,1

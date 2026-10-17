@@ -24,6 +24,24 @@ It does this two independent ways and compares them:
 
 The CLI runs both under an identical calibration/validation split protocol — the formula is never graded on the data that fitted it — and scores both against a fixed middle-size baseline.
 
+### What "N" and "the crossover" mean here
+
+**One number means different things per workload:**
+
+| Workload | `n` counts | Calibration range | Formula input |
+|----------|-----------|-------------------|---------------|
+| `vecadd` | elements | 4096 – 4 194 304 elements | element count (time ∝ n) |
+| `reduce` | elements | 4096 – 4 194 304 elements | element count (time ∝ n) |
+| `matmul` | **matrix dimension** (`n×n` matrix, `n³` ops) | 64 – 2048 (dim) | dimension as if time ∝ n — structurally wrong (real cost ∝ n³), kept to demonstrate the failure mode |
+
+**Three different "crossover" definitions are used—don't mix them up:**
+
+1. **Formula `n*`** — where the two *fitted straight lines* intersect. Exact only if cost really is linear in `n` (see above).
+2. **Observed `n`** — the first *scanned grid point* where the GPU wins twice in a row. Grid = geometric (`n, 4n, 16n, …`), so this is quantized: the true transition lies *somewhere between the neighboring grid points*, typically anywhere in a 4× band. Reported errors (below) are distances to that quantized point, not exact distances to the true crossover.
+3. **Search `n*`** — the refined upper edge of the first bracket, re-measured on fresh repeat batches. Interior candidates are labeled `verified-interior`; candidates verified at `max_n` are `boundary-candidate` — the true crossover may lie *at or beyond* the window edge, which is a finding about the window, not a universally established crossover.
+
+**Error formula:** `abs_err = |formula_n* − observed_n|`, `rel_err = abs_err / observed_n` (denominator = the observed grid point). Both inherit the grid quantization above.
+
 ---
 
 ## Build
@@ -51,35 +69,43 @@ ctest --test-dir build --output-on-failure
 ## Run
 
 ```bat
-:: All workloads × both modes, writes CSVs to results/
-build\cudagauge_cli.exe --out results
+:: All workloads × both modes, writes CSVs to a fresh results directory
+:: (refuses to overwrite existing files unless --overwrite is passed)
+build\cudagauge_cli.exe --out results_2026-10-18
 
 :: Single workload / mode / repeat override
-build\cudagauge_cli.exe --workload matmul --mode e2e --repeats 3 --out results
+build\cudagauge_cli.exe --workload matmul --mode e2e --repeats 3 --out results_2026-10-18
 
-:: Level 2: independent client example (only public headers)
+:: Extra one-off measurements at given sizes (no fit, no search) —
+:: useful to probe near a suspected boundary
+build\cudagauge_cli.exe --workload reduce --mode e2e --out results_probe --probe 12582912,16777216,25165824
+
+:: Level 2: independent client example (only public headers).
+:: Refuses to overwrite results/sample_app.csv; archive or delete it first.
 build\sample_app.exe
 
 :: Level 3: NVIDIA cuda-samples vectorAdd behind the public adapter
-build\vectorAdd_cudagauge.exe --out results
-build\vectorAdd_cudagauge.exe --quick --out results   :: smoke test (ctest uses this)
+build\vectorAdd_cudagauge.exe --out results_vectoradd
+build\vectorAdd_cudagauge.exe --quick --overwrite --out build\test_results   :: ctest smoke
 ```
 
 Modes: `e2e` (end-to-end, includes H2D + kernel + D2H), `resident` (kernel only, data already on device), or `both`.
 
 Workloads: `vecadd`, `reduce`, `matmul`, or `all`.
 
+Every run writes `<workload>_<mode>_{calibration,validation,search}.csv` (plus `_probe.csv` with `--probe`) into `--out`. Recorded measurements are never silently replaced: the CLI pre-checks every planned file and refuses before benchmarking anything.
+
 ---
 
 ## What I discovered: formula vs. manual search
 
-The core finding of this project: **neither method wins universally.** Here is what the experiments showed on an RTX 2050 (see `explanations/EXPERIMENT_LOG.md` for the full data):
+> **Provenance note:** the table below is from the **single 2026-10-15 run**; its raw CSVs were overwritten during a rebuild and only the console log survives (`results/2026-10-15_historical/console_log.txt`). Later runs are kept in their own dated directories under `results/` (see `results/MANIFEST.md`) and are never merged into this table. The core finding—but **neither method wins universally**—replicated on every run.
 
 | Workload | Mode | Formula `n*` | Observed `n` | Formula error | Search `n*` | Search verified? |
 |----------|------|--------------|--------------|---------------|-------------|------------------|
 | vecadd | e2e | none | none in range | — | none | GPU never wins |
 | vecadd | resident | 85304 | 262144 | 68% | 163840 | ✓ |
-| reduce | e2e | none | none ≤ 2M | — | 16M (edge) | ✓ (beyond window) |
+| reduce | e2e | none | none ≤ 2M | — | 16M (edge) | boundary candidate in this run; **not reproduced** in two later runs (GPU loses ≤ 25M) |
 | reduce | resident | 32852 | 32768 | 0.3% | unverified | noise-dominated |
 | matmul | e2e | 92 | 48 | 92% | 64 | ✓ |
 | matmul | resident | 91 | 48 | 90% | unverified | noise-dominated |
@@ -95,10 +121,11 @@ The core finding of this project: **neither method wins universally.** Here is w
 
 **3. The empirical search is honest about uncertainty.**
 - Where noise swamps the signal (`reduce-resident`, `matmul-resident`), the search abstained rather than inventing a number. Refined searches landed on ~0.04–0.09 ms differences — below measurement noise.
+- Verification now uses **up to two fresh repeat batches**, and *all* must agree the GPU wins; a single disagreeing batch marks the candidate `unverified`. That makes the search *more* resistant to timing noise, but noise cannot be eliminated — it can only require more agreement.
 
 **4. Transfer-inclusive (e2e) often means the GPU never wins.**
 - `vecadd-e2e`: three full memory passes per `N` cannot beat one CPU pass; both formula and search correctly reported *absence* of a crossover.
-- `reduce-e2e`: GPU only wins at the 16M edge (outside the calibration window); inside ≤2M elements, nothing wins.
+- `reduce-e2e`: the 2026-10-15 run logged a boundary candidate at the 16M edge; two later runs (2026-10-17 full re-run, 2026-10-18 re-check with extra near-boundary probes at 4M–25M) show the GPU *losing* everywhere in that range. On this evidence there is **no established reduce-e2e crossover ≤ 25M** — the edge result was a single-run, possibly noise-driven observation. See `results/2026-10-18_reduce_e2e_recheck/`.
 
 **5. A threshold estimator should check linearity first.**
 Use the formula only after confirming the cost is linear in `n`; otherwise fall back to the adaptive search. The library never rewrites your dispatch logic — it only recommends a size.
@@ -141,9 +168,15 @@ CudaGauge/
 │   └── third_party/vectorAdd/  # Level 3: NVIDIA vectorAdd behind the adapter
 ├── tests/
 │   ├── test_correctness.cpp   # Level 1: CPU↔GPU match, both modes, odd sizes
-│   ├── test_model.cpp         # formula unit tests (exact fit, parallels, extrapolation)
-│   └── test_search.cpp        # adaptive search unit test (synthetic crossover)
-├── results/                # generated benchmark CSVs (never hand-edited)
+│   ├── test_model.cpp         # formula unit tests (exact fit, parallels, extrapolation, invalid-row filtering)
+│   └── test_search.cpp        # search tests: synthetic crossover, no-bracket, boundary, multi-bracket, noisy, budget
+├── results/                  # benchmark output; each run in its own dated
+│   │                         # subdirectory (see results/MANIFEST.md for
+│   │                         # provenance of every surviving artifact)
+│   ├── MANIFEST.md           # what each results/* directory is
+│   ├── 2026-10-15_historical/  # console log of the original run
+│   ├── 2026-10-17_regen_run/   # full CSVs of the regeneration run
+│   └── 2026-10-18_reduce_e2e_recheck/  # unstable reduce-e2e re-evaluation
 ```
 
 ---
@@ -153,7 +186,7 @@ CudaGauge/
 ```bat
 cmd /c '"C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat" >NUL && cmake --build build'
 ctest --test-dir build --output-on-failure
-build\cudagauge_cli.exe --out results
+build\cudagauge_cli.exe --out results_reproduce
 ```
 
-Expect ±20% jitter on small-N medians (clocks, thermals, background CPU); crossovers may shift one grid step. Never compare Debug-build numbers with Release results — use Release for both CPU and GPU sides.
+Expect ±20% jitter on small-N medians (clocks, thermals, background CPU); crossovers may shift one grid step. **Run-to-run disagreement at a boundary is a real finding — record it (each run in its own directory) instead of re-running until the number you hoped for appears.** Never compare Debug-build numbers with Release results — use Release for both CPU and GPU sides.

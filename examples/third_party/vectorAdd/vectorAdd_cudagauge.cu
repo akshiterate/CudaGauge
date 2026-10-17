@@ -188,16 +188,42 @@ static int run_mode(CustomWorkload& work, TimingMode mode, const std::vector<lon
 
 int main(int argc, char** argv) {
     bool quick = false;
+    bool overwrite = false;
     std::string out_dir = "results";
     for (int i = 1; i < argc; i++) {
         std::string arg = argv[i];
         if (arg == "--quick") {
             quick = true;
+        } else if (arg == "--overwrite") {
+            overwrite = true;
         } else if (arg == "--out" && i + 1 < argc) {
             out_dir = argv[++i];
         } else {
             std::printf("unknown arg: %s\n", arg.c_str());
             return 1;
+        }
+    }
+    // Refuse to silently overwrite recorded measurements (same policy
+    // as cudagauge_cli). --overwrite opts out explicitly.
+    if (!overwrite) {
+        std::vector<std::string> files;
+        const char* modes[2] = {"e2e", "resident"};
+        for (int m = 0; m < 2; m++) {
+            std::string base = out_dir + "/thirdparty_vectorAdd_" + modes[m];
+            files.push_back(base + "_calibration.csv");
+            files.push_back(base + "_validation.csv");
+            if (!quick) {
+                files.push_back(base + "_search.csv");
+            }
+        }
+        for (size_t i = 0; i < files.size(); i++) {
+            FILE* probe = std::fopen(files[i].c_str(), "rb");
+            if (probe) {
+                std::fclose(probe);
+                std::printf("refusing to overwrite %s\n", files[i].c_str());
+                std::printf("pass --overwrite, or use a fresh --out directory\n");
+                return 1;
+            }
         }
     }
     CustomWorkload work = make_upstream_vectoradd();

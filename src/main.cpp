@@ -17,6 +17,8 @@
 #include <string>
 #include <vector>
 
+#include <direct.h>  // _mkdir
+
 #include "cudagauge/cudagauge.h"
 #include "cudagauge/workloads.h"
 
@@ -33,7 +35,8 @@ struct Plan {
     int repeats;
 };
 
-// First n where the GPU wins twice in a row in sorted measurements.
+// First n (in elements / dimension, the same N the measurements use)
+// where the GPU wins twice in a row in sorted measurements.
 // Returns -1 when the GPU never wins steadily.
 static long long observed_crossover(std::vector<Measurement> rows) {
     // Simple insertion sort by size, then first steady GPU double-win.
@@ -112,8 +115,12 @@ static void run_plan(Plan& plan, TimingMode mode, const std::string& out_dir) {
     double cal_seconds =
         (double)(std::chrono::steady_clock::now() - cal_start).count() / 1e9;
 
-    LinearFit cpu_fit = fit_line(sizes_of(calib), cpu_of(calib));
-    LinearFit gpu_fit = fit_line(sizes_of(calib), gpu_of(calib));
+    // The formula may only see valid measurements: an invalid row (a
+    // correctness or allocation failure) carries times that must not
+    // shape the model.
+    std::vector<Measurement> calib_valid = filter_valid(calib);
+    LinearFit cpu_fit = fit_line(sizes_of(calib_valid), cpu_of(calib_valid));
+    LinearFit gpu_fit = fit_line(sizes_of(calib_valid), gpu_of(calib_valid));
     Prediction pred = predict_crossover(cpu_fit, gpu_fit, plan.calib_sizes.front(),
                                         plan.search_max);
 
@@ -125,15 +132,21 @@ static void run_plan(Plan& plan, TimingMode mode, const std::string& out_dir) {
     }
     long long observed = observed_crossover(all);
 
-    SearchResult found =
+    SearchResult found_out =
         adaptive_search(work, mode, plan.search_start, plan.search_max, plan.growth,
                         plan.repeats, 24);
 
     std::string base = out_dir + "/" + plan.name + "_" + mode_name;
     write_measurements_csv(base + "_calibration.csv", plan.name, mode_name, calib);
     write_measurements_csv(base + "_validation.csv", plan.name, mode_name, valid);
-    write_measurements_csv(base + "_search.csv", plan.name, mode_name, found.history);
+    write_measurements_csv(base + "_search.csv", plan.name, mode_name, found_out.history);
 
+    std::printf("  valid calibration rows: %d of %d\n", (int)calib_valid.size(),
+                (int)calib.size());
+    if (!cpu_fit.ok || !gpu_fit.ok) {
+        std::printf("  formula rejected: insufficient valid calibration rows (%s / %s)\n",
+                    cpu_fit.note.c_str(), gpu_fit.note.c_str());
+    }
     std::printf("  cpu fit: t = %.4f + %.6f * n (%s)\n", cpu_fit.intercept, cpu_fit.slope,
                 cpu_fit.note.c_str());
     std::printf("  gpu fit: t = %.4f + %.6f * n (%s)\n", gpu_fit.intercept, gpu_fit.slope,
@@ -152,18 +165,23 @@ static void run_plan(Plan& plan, TimingMode mode, const std::string& out_dir) {
     if (pred.has_crossover && observed >= 0) {
         double abs_err = (double)(pred.crossover_n > observed ? pred.crossover_n - observed
                                                               : observed - pred.crossover_n);
-        std::printf("  abs error = %.0f, rel error = %.3f\n", abs_err, abs_err / (double)observed);
+        std::printf("  abs error = %.0f, rel error = %.3f (vs the observed point; the true\n",
+                    abs_err, abs_err / (double)observed);
+        std::printf("  crossover lies between the neighbouring grid sizes, so this is a\n");
+        std::printf("  quantized estimate, not an exact distance)\n");
         std::printf("  formula-threshold accuracy on validation: %.2f\n",
                     threshold_accuracy(valid, pred.crossover_n));
     }
-    if (found.found) {
-        std::printf("  empirical search: crossover %lld in [%lld, %lld], %d measurements (%s)\n",
-                    found.crossover_n, found.lower_n, found.upper_n, found.num_measurements,
-                    found.note.c_str());
+    if (found_out.found) {
+        std::printf("  empirical search: %s %lld in [%lld, %lld], %d measurements (%s)\n",
+                    outcome_to_string(found_out.outcome), found_out.crossover_n,
+                    found_out.lower_n, found_out.upper_n, found_out.num_measurements,
+                    found_out.note.c_str());
         std::printf("  search-threshold accuracy on validation: %.2f\n",
-                    threshold_accuracy(valid, found.crossover_n));
+                    threshold_accuracy(valid, found_out.crossover_n));
     } else {
-        std::printf("  empirical search: none (%s)\n", found.note.c_str());
+        std::printf("  empirical search: none (%s / %s)\n",
+                    outcome_to_string(found_out.outcome), found_out.note.c_str());
     }
     long long baseline = plan.calib_sizes[plan.calib_sizes.size() / 2];
     std::printf("  fixed-baseline n=%lld accuracy on validation: %.2f\n", baseline,
@@ -179,10 +197,42 @@ static void run_plan(Plan& plan, TimingMode mode, const std::string& out_dir) {
     std::fflush(stdout);
 }
 
+// Refuse to run if any planned output file already exists, so a new run
+// can never silently overwrite recorded measurements. --overwrite opts
+// out explicitly.
+static std::vector<std::string> planned_files(const std::string& out_dir,
+                                              const std::vector<Plan>& plans,
+                                              const std::vector<TimingMode>& modes) {
+    std::vector<std::string> files;
+    for (size_t i = 0; i < plans.size(); i++) {
+        for (size_t m = 0; m < modes.size(); m++) {
+            std::string base = out_dir + "/" + plans[i].name + "_" +
+                               mode_to_string(modes[m]);
+            files.push_back(base + "_calibration.csv");
+            files.push_back(base + "_validation.csv");
+            files.push_back(base + "_search.csv");
+        }
+    }
+    return files;
+}
+
+static bool any_exists(const std::vector<std::string>& files) {
+    for (size_t i = 0; i < files.size(); i++) {
+        FILE* f = std::fopen(files[i].c_str(), "rb");
+        if (f) {
+            std::fclose(f);
+            return true;
+        }
+    }
+    return false;
+}
+
 int main(int argc, char** argv) {
     std::string want_workload = "all";
     std::string want_mode = "both";
     std::string out_dir = "results";
+    bool overwrite = false;
+    std::string probe_sizes;  // --probe n1,n2,... : extra one-off measurements
     int repeats_override = 0;
     for (int i = 1; i < argc; i++) {
         std::string arg = argv[i];
@@ -194,6 +244,10 @@ int main(int argc, char** argv) {
             out_dir = argv[++i];
         } else if (arg == "--repeats" && i + 1 < argc) {
             repeats_override = std::atoi(argv[++i]);
+        } else if (arg == "--overwrite") {
+            overwrite = true;
+        } else if (arg == "--probe" && i + 1 < argc) {
+            probe_sizes = argv[++i];
         } else {
             std::printf("unknown arg: %s\n", arg.c_str());
             return 1;
@@ -262,12 +316,77 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    // P1: never overwrite recorded measurements by default. Pre-flight
+    // check on every planned output file (probe files included), so the
+    // run is refused before any benchmarking starts.
+    std::vector<std::string> files = planned_files(out_dir, plans, modes);
+    if (!probe_sizes.empty()) {
+        for (size_t i = 0; i < plans.size(); i++) {
+            if (want_workload != "all" && want_workload != plans[i].name) {
+                continue;
+            }
+            for (size_t m = 0; m < modes.size(); m++) {
+                files.push_back(out_dir + "/" + plans[i].name + "_" +
+                                mode_to_string(modes[m]) + "_probe.csv");
+            }
+        }
+    }
+    if (!overwrite && any_exists(files)) {
+        std::printf("refusing to overwrite existing results in %s\n", out_dir.c_str());
+        std::printf("pass --overwrite, or use a fresh --out directory (e.g. results_2026-10-18)\n");
+        return 1;
+    }
+    if (_mkdir(out_dir.c_str()) != 0) {
+        // Exists (or cannot create): either fine or the writer will fail
+        // loudly on the first CSV.
+    }
+
     for (size_t i = 0; i < plans.size(); i++) {
         if (want_workload != "all" && want_workload != plans[i].name) {
             continue;
         }
         for (size_t m = 0; m < modes.size(); m++) {
             run_plan(plans[i], modes[m], out_dir);
+        }
+    }
+
+    // --probe n1,n2,... : measure given sizes without fitting or
+    // searching. Used to keep extra measurements near a suspected
+    // boundary (write into a fresh --out directory).
+    if (!probe_sizes.empty()) {
+        std::vector<long long> sizes;
+        std::string item;
+        for (size_t i = 0; i <= probe_sizes.size(); i++) {
+            if (i == probe_sizes.size() || probe_sizes[i] == ',') {
+                if (!item.empty()) {
+                    sizes.push_back(std::atoll(item.c_str()));
+                    item.clear();
+                }
+            } else {
+                item += probe_sizes[i];
+            }
+        }
+        for (size_t m = 0; m < modes.size(); m++) {
+            for (size_t i = 0; i < plans.size(); i++) {
+                if (want_workload != "all" && want_workload != plans[i].name) {
+                    continue;
+                }
+                CustomWorkload work = plans[i].make();
+                std::vector<Measurement> rows =
+                    calibrate_custom(work, sizes, modes[m], plans[i].repeats);
+                for (size_t r = 0; r < rows.size(); r++) {
+                    std::printf("[%s] probe n=%lld cpu=%.4f ms gpu=%.4f ms valid=%d\n",
+                                mode_to_string(modes[m]).c_str(), rows[r].size_n,
+                                rows[r].cpu_ms, rows[r].gpu_ms, (int)rows[r].valid);
+                }
+                std::string mode_name = mode_to_string(modes[m]);
+                if (!write_measurements_csv(
+                        out_dir + "/" + plans[i].name + "_" + mode_name + "_probe.csv",
+                        plans[i].name, mode_name, rows)) {
+                    std::printf("could not write probe CSV in %s\n", out_dir.c_str());
+                    return 1;
+                }
+            }
         }
     }
     return 0;

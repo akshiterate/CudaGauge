@@ -102,6 +102,14 @@ int main() {
     sizes.push_back(65536);
     sizes.push_back(1048576);
     sizes.push_back(4194304);
+    // Recorded measurements are never silently replaced: refuse before
+    // benchmarking if the target CSV already exists.
+    if (FILE* probe = std::fopen("results/sample_app.csv", "rb")) {
+        std::fclose(probe);
+        std::printf("refusing to overwrite results/sample_app.csv\n");
+        std::printf("archive or remove it first, then rerun\n");
+        return 1;
+    }
     std::vector<Measurement> rows = calibrate_custom(work, sizes, TimingMode::EndToEnd, 5);
     for (size_t i = 0; i < rows.size(); i++) {
         std::printf("n=%lld cpu=%.4f ms gpu=%.4f ms valid=%d\n", rows[i].size_n, rows[i].cpu_ms,

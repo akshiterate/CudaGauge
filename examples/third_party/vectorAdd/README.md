@@ -26,11 +26,14 @@ Only `cudagauge/cudagauge.h` is included. No library logic duplicated.
 ## Build / run (existing NMake + vcvars64 environment)
 ```
 cmd /c '"...\vcvars64.bat" >NUL && cmake --build build --target vectorAdd_cudagauge'
-build\vectorAdd_cudagauge.exe --out results            :: full run
-build\vectorAdd_cudagauge.exe --quick --out results    :: smoke test (ctest)
+build\vectorAdd_cudagauge.exe --out results_vectoradd            :: full run
+build\vectorAdd_cudagauge.exe --quick --out build\test_results   :: smoke test
 ```
+Like `cudagauge_cli`, the adapter refuses to overwrite existing output
+CSVs unless `--overwrite` is passed (ctest's smoke invocation does so
+explicitly, writing into `build/test_results`).
 
-## Actual results (RTX 2050, 2026-10-16, `results/thirdparty_*.csv`)
+## Actual results (RTX 2050, 2026-10-16; CSVs preserved in `results/2026-10-17_regen_run/thirdparty_*.csv`)
 - **e2e**: formula predicts no crossover; search finds none; all rows
   valid. Transfer-inclusive GPU never beats the CPU to 2M elements —
   same verdict as built-in vecadd-e2e.

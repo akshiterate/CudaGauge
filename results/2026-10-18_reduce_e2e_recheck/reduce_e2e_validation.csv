@@ -1,0 +1,6 @@
+workload,mode,n,cpu_ms,gpu_ms,repeats,valid
+reduce,e2e,8192,0.0041,0.059008,5,1
+reduce,e2e,32768,0.0161,0.121312,5,1
+reduce,e2e,131072,0.0641,0.193536,5,1
+reduce,e2e,524288,0.2564,0.518656,5,1
+reduce,e2e,2097152,1.1278,1.8073,5,1

@@ -1,0 +1,6 @@
+workload,mode,n,cpu_ms,gpu_ms,repeats,valid
+matmul,e2e,48,0.0942,0.168736,3,1
+matmul,e2e,96,1.4732,0.520544,3,1
+matmul,e2e,192,12.2034,0.805664,3,1
+matmul,e2e,384,99.4028,4.35443,3,1
+matmul,e2e,768,965.909,37.5593,3,1

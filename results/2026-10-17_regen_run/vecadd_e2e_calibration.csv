@@ -1,0 +1,6 @@
+workload,mode,n,cpu_ms,gpu_ms,repeats,valid
+vecadd,e2e,4096,0.0003,0.069216,5,1
+vecadd,e2e,16384,0.0015,0.097824,5,1
+vecadd,e2e,65536,0.0062,0.325792,5,1
+vecadd,e2e,262144,0.0539,0.752256,5,1
+vecadd,e2e,1048576,0.3856,2.49942,5,1

@@ -25,4 +25,30 @@ std::string mode_to_string(TimingMode mode) {
     return "resident";
 }
 
+const char* outcome_to_string(SearchOutcome outcome) {
+    switch (outcome) {
+        case SearchOutcome::VerifiedInterior:
+            return "verified-interior";
+        case SearchOutcome::BoundaryCandidate:
+            return "boundary-candidate";
+        case SearchOutcome::Unverified:
+            return "unverified";
+        case SearchOutcome::BudgetExhausted:
+            return "budget-exhausted";
+        default:
+            return "none";
+    }
+}
+
+std::vector<Measurement> filter_valid(const std::vector<Measurement>& rows) {
+    std::vector<Measurement> out;
+    out.reserve(rows.size());
+    for (size_t i = 0; i < rows.size(); i++) {
+        if (rows[i].valid) {
+            out.push_back(rows[i]);
+        }
+    }
+    return out;
+}
+
 }  // namespace cudagauge

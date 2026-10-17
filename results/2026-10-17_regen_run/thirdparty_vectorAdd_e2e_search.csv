@@ -1,0 +1,9 @@
+workload,mode,n,cpu_ms,gpu_ms,repeats,valid
+thirdparty_vectorAdd,e2e,1024,0.0001,0.174432,5,1
+thirdparty_vectorAdd,e2e,4096,0.0005,0.1048,5,1
+thirdparty_vectorAdd,e2e,16384,0.0015,0.126208,5,1
+thirdparty_vectorAdd,e2e,65536,0.006,0.243744,5,1
+thirdparty_vectorAdd,e2e,262144,0.0545,0.928864,5,1
+thirdparty_vectorAdd,e2e,1048576,0.3931,2.72131,5,1
+thirdparty_vectorAdd,e2e,4194304,2.9257,11.7129,5,1
+thirdparty_vectorAdd,e2e,16777216,16.4749,46.0803,5,1
