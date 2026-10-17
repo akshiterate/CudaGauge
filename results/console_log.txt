@@ -1,0 +1,59 @@
+=== vecadd [e2e] ===
+  cpu fit: t = -0.0290 + 0.000001 * n (least-squares fit)
+  gpu fit: t = 0.1257 + 0.000002 * n (least-squares fit)
+  formula predicts no crossover (crossover is negative, GPU always faster or never)
+  observed: GPU never steadily faster in range
+  empirical search: none (no sign change in scanned range)
+  fixed-baseline n=65536 accuracy on validation: 0.40
+  calibration time: 1.8 s, invalid rows: 0
+=== vecadd [resident] ===
+  cpu fit: t = -0.0073 + 0.000001 * n (least-squares fit)
+  gpu fit: t = 0.0639 + 0.000000 * n (least-squares fit)
+  formula predicts n* = 85304 (prediction inside measured range)
+  observed steady crossover near n = 262144
+  abs error = 176840, rel error = 0.675
+  formula-threshold accuracy on validation: 0.80
+  empirical search: crossover 163840 in [139264, 163840], 13 measurements (verified: GPU faster at upper edge on fresh repeats)
+  search-threshold accuracy on validation: 1.00
+  fixed-baseline n=65536 accuracy on validation: 0.80
+  calibration time: 0.0 s, invalid rows: 0
+=== reduce [e2e] ===
+  cpu fit: t = 0.0454 + 0.000001 * n (least-squares fit)
+  gpu fit: t = 0.3222 + 0.000001 * n (least-squares fit)
+  formula predicts no crossover (crossover is negative, GPU always faster or never)
+  observed: GPU never steadily faster in range
+  empirical search: crossover 16777216 in [15204352, 16777216], 15 measurements (verified: GPU faster at upper edge on fresh repeats)
+  search-threshold accuracy on validation: 1.00
+  fixed-baseline n=65536 accuracy on validation: 0.40
+  calibration time: 0.0 s, invalid rows: 0
+=== reduce [resident] ===
+  cpu fit: t = -0.0026 + 0.000002 * n (least-squares fit)
+  gpu fit: t = 0.0622 + 0.000000 * n (least-squares fit)
+  formula predicts n* = 32852 (prediction inside measured range)
+  observed steady crossover near n = 32768
+  abs error = 84, rel error = 0.003
+  formula-threshold accuracy on validation: 0.80
+  empirical search: none (candidate did not verify, treating as uncertain)
+  fixed-baseline n=65536 accuracy on validation: 0.80
+  calibration time: 0.0 s, invalid rows: 0
+=== matmul [e2e] ===
+  cpu fit: t = -65.4611 + 0.718761 * n (least-squares fit)
+  gpu fit: t = -2.0469 + 0.026338 * n (least-squares fit)
+  formula predicts n* = 92 (prediction inside measured range)
+  observed steady crossover near n = 48
+  abs error = 44, rel error = 0.917
+  formula-threshold accuracy on validation: 0.80
+  empirical search: crossover 64 in [60, 64], 11 measurements (verified: GPU faster at upper edge on fresh repeats)
+  search-threshold accuracy on validation: 0.80
+  fixed-baseline n=128 accuracy on validation: 0.60
+  calibration time: 1.6 s, invalid rows: 0
+=== matmul [resident] ===
+  cpu fit: t = -65.9077 + 0.723643 * n (least-squares fit)
+  gpu fit: t = -1.4962 + 0.017341 * n (least-squares fit)
+  formula predicts n* = 91 (prediction inside measured range)
+  observed steady crossover near n = 48
+  abs error = 43, rel error = 0.896
+  formula-threshold accuracy on validation: 0.80
+  empirical search: none (candidate did not verify, treating as uncertain)
+  fixed-baseline n=128 accuracy on validation: 0.60
+  calibration time: 1.6 s, invalid rows: 0

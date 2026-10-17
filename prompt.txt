@@ -1,0 +1,431 @@
+# CudaGauge — CPU/GPU Crossover Research & Benchmarking Library
+
+## 1. Your role
+
+Act as my senior C++/CUDA engineer and mentor. Build a complete, working project called **CudaGauge**.
+
+CudaGauge is a reusable library and command-line tool that helps developers determine when their existing CPU implementation becomes slower than their CUDA GPU implementation.
+
+The project investigates two approaches:
+
+1. **Formula-based prediction:** Estimate the CPU/GPU crossover using a mathematical performance model fitted to a small number of measurements.
+2. **Adaptive empirical benchmarking:** Discover the crossover through geometric sampling, targeted refinement, and repeated measurements.
+
+We will compare both methods using actual benchmarks. If the formula works sufficiently well, it could power a lightweight threshold estimator. If it does not, the empirical approach should provide a more reliable alternative.
+
+Do not assume either approach will win. The experimental results must determine the conclusions.
+
+## 2. My most important requirement: simple code
+
+I want to understand every line of the code myself after you finish implementing the project.
+
+**Write the simplest understandable code possible. Prioritize clarity over cleverness, abstraction, optimization, and architectural sophistication.**
+
+Strict requirements:
+
+- Use straightforward C++ and CUDA C.
+- Keep individual source files small and focused.
+- Use descriptive variable and function names.
+- Prefer simple functions, loops, conditionals, structs, vectors, and ordinary file I/O.
+- Avoid unnecessary templates, inheritance, operator overloading, metaprogramming, macros, complicated generic frameworks, and excessive abstraction.
+- Avoid unnecessary third-party libraries.
+- Do not introduce advanced CUDA optimization unless it is necessary for the project's goals.
+- Avoid complicated asynchronous execution, streams, concurrency, and memory-management abstractions in the initial version.
+- Use `std::chrono` for CPU wall-clock timing and CUDA events for GPU timing.
+- Check CUDA errors explicitly.
+- Do not compress complex operations into one-line expressions.
+- Explain unfamiliar language features and CUDA concepts in the documentation.
+- Never add a feature merely to make the project appear sophisticated.
+
+If a requirement is too complicated to implement simply, build the smallest useful version and document the limitation.
+
+## 3. Complete the implementation autonomously
+
+Do not stop after each implementation stage to explain code to me, quiz me, ask me to approve routine decisions, or wait for me to request the next stage.
+
+Implement the complete planned project autonomously, making reasonable engineering decisions within the requirements.
+
+You should still inspect the environment before implementation and ask me only if a genuinely blocking decision cannot be resolved safely.
+
+Maintain all documentation while implementing. Once the project is complete, I will study the code and explanations independently.
+
+Do not sacrifice correctness or documentation just to finish quickly.
+
+## 4. Mandatory explanation directory
+
+Create an `explanations/` directory.
+
+Every source file, build file, and significant configuration file must have a corresponding explanation document.
+
+Example mappings:
+
+- `src/main.cpp` → `explanations/main.md`
+- `src/benchmark.cpp` → `explanations/benchmark.md`
+- `src/benchmark.cu` → `explanations/benchmark_cuda.md`
+- `src/model.cpp` → `explanations/model.md`
+- `CMakeLists.txt` → `explanations/build.md`
+
+Adapt the names to the actual architecture.
+
+Every explanation document must cover:
+
+1. The file's purpose.
+2. The concepts it uses.
+3. A line-by-line or small-group-of-lines walkthrough of all meaningful code.
+4. Every important variable, parameter, and return value.
+5. How each function works.
+6. Why the implementation was chosen.
+7. A small example.
+8. Common mistakes and possible bugs.
+9. Dependencies on other files.
+
+Do not merely paraphrase the code. Explain what the code does and why.
+
+Create the following documents:
+
+### `explanations/INDEX.md`
+
+The master learning guide. Include:
+
+- The recommended order for studying the code.
+- How the files fit together.
+- A glossary of technical terms.
+- All mathematical equations and their assumptions.
+- The CUDA concepts used in the project.
+- Questions I should be able to answer to demonstrate understanding.
+
+### `explanations/PROJECT_STATUS.md`
+
+Track the completed features, build status, tests, known limitations, and commands for reproducing the results.
+
+### `explanations/EXPERIMENT_LOG.md`
+
+Record actual experiments, hardware details, workload sizes, timing modes, repetitions, measurements, predicted crossovers, observed crossovers, prediction errors, and interpretations.
+
+### `explanations/DECISIONS.md`
+
+Record important architectural and implementation decisions with short explanations.
+
+Whenever code changes, update the relevant explanations and status documents.
+
+**Never leave an important source file undocumented.**
+
+## 5. Environment and project structure
+
+My machine has an NVIDIA RTX 2050 laptop GPU with 4 GB of dedicated VRAM.
+
+Inspect the existing working directory and determine which C++ compiler, NVIDIA CUDA compiler, and build tools are available before making assumptions.
+
+Use the installed CUDA toolkit. Do not install dependencies or change system configuration without asking me.
+
+Keep the initial dependency list small. Use a straightforward build system only if useful, and document it.
+
+Do not use Python for the core implementation. Optional external plotting or analysis tools may be used later if justified.
+
+Separate the reusable library, command-line application, tests, example applications, and explanations.
+
+Use a clean structure similar to:
+
+- `include/cudagauge/` — public library headers.
+- `src/` — library implementation and CLI.
+- `tests/` — correctness and integration tests.
+- `examples/` — applications demonstrating library integration.
+- `explanations/` — learning documentation.
+- `results/` — generated benchmark results, excluding unnecessary large files.
+
+Adapt the structure to keep the actual implementation small.
+
+## 6. Product architecture: library first
+
+CudaGauge must be a reusable C++/CUDA library, not merely a collection of benchmark executables.
+
+The library should provide:
+
+- A small public adapter API.
+- CPU and GPU benchmark execution.
+- Timing utilities.
+- Formula-based crossover prediction.
+- Adaptive empirical search.
+- Correctness validation hooks.
+- Result collection and CSV export.
+
+The command-line application should use the library to run benchmarks and report results.
+
+Keep the library interface small enough that a developer can understand how to integrate it without studying the entire implementation.
+
+Avoid duplicating benchmark logic between the library and CLI.
+
+## 7. Developer integration
+
+The intended user is a developer who already has a CPU implementation and a CUDA implementation in their own application.
+
+They should be able to integrate CudaGauge by exposing those implementations through a small adapter, compiling against our library, and running calibration.
+
+For example, an external developer might have:
+
+```cpp
+void process_cpu(const Input& input);
+void process_gpu(const Input& input);
+```
+
+Their current program might use a hardcoded threshold to choose between the two.
+
+CudaGauge should help determine whether that threshold is appropriate.
+
+The actual public API must be designed carefully. It must account for:
+
+- Creating valid inputs for each workload size.
+- Invoking equivalent CPU and GPU implementations.
+- Initializing and releasing resources.
+- CPU memory versus GPU device memory.
+- Correctness validation.
+- Selecting workload sizes.
+- Choosing a timing mode.
+- Collecting and exporting results.
+
+CPU and CUDA functions may have different signatures and memory requirements. Do not assume they are interchangeable without an adapter.
+
+Do not attempt to rewrite arbitrary source files, replace arbitrary machine-code branches, or promise binary-only compatibility.
+
+Initially, CudaGauge recommends a threshold; it must not silently modify the developer's production dispatch logic.
+
+Document the integration requirements and limitations clearly.
+
+## 8. Two timing modes
+
+Implement two distinct benchmark modes.
+
+### Mode A: End-to-end execution
+
+Compare CPU execution against GPU execution including the required host-to-device transfers, kernel execution, and result transfers.
+
+Clearly document whether allocation and initialization costs are included.
+
+The objective is to estimate when GPU offloading benefits the actual application.
+
+### Mode B: GPU-resident execution
+
+Assume the input data is already available in GPU memory.
+
+Measure CPU execution against GPU kernel execution, with consistent handling of launch and synchronization overhead.
+
+The objective is to estimate when GPU computation is worthwhile when data-transfer costs are not part of the operation.
+
+Use `std::chrono` for CPU timing and CUDA events for GPU timing.
+
+Perform appropriate synchronization so measurements represent completed work.
+
+Separate one-time CUDA initialization and warm-up from normal execution.
+
+Never compare results obtained using inconsistent timing definitions.
+
+## 9. Initial workloads
+
+Implement these workloads in order:
+
+1. Vector addition.
+2. Array reduction (sum).
+3. Matrix multiplication.
+
+For each workload, implement equivalent CPU and CUDA versions and verify their results.
+
+Keep the CPU implementations reasonable and the GPU implementations straightforward.
+
+Do not deliberately handicap the CPU implementation to manufacture an impressive GPU crossover.
+
+Document implementation differences and optimization settings.
+
+Start with vector addition and use it to validate the complete benchmarking pipeline before adding the remaining workloads.
+
+The final architecture should support new workloads through the public adapter without requiring changes to the search algorithms.
+
+## 10. Formula-based predictor
+
+Investigate this simple performance model:
+
+\[
+T_{\mathrm{CPU}}(N)=a+bN
+\]
+
+\[
+T_{\mathrm{GPU}}(N)=c+dN
+\]
+
+Where:
+
+- \(N\) is the workload size.
+- \(a,c\) represent estimated fixed costs.
+- \(b,d\) represent estimated per-unit costs.
+
+When the denominator is nonzero, the predicted crossover is:
+
+\[
+N^*=\frac{c-a}{b-d}
+\]
+
+This is a hypothesis, not a guaranteed description of GPU performance.
+
+Fit the model using a small set of calibration measurements. Prefer a simple, understandable least-squares implementation in ordinary C++.
+
+If a simpler fitting method is used, document its trade-offs.
+
+Handle cases where:
+
+- The denominator is zero or nearly zero.
+- The predicted crossover is negative.
+- The crossover is outside the supported range.
+- The model predicts no useful crossover in the tested range.
+- The measurements are too noisy to support a reliable estimate.
+
+Do not blindly extrapolate beyond measured workload sizes without clearly identifying the result as an extrapolation.
+
+Explain the mathematical assumptions and the meaning of every fitted parameter.
+
+## 11. Adaptive empirical search
+
+Implement a search method that does not rely on the linear formula being correct.
+
+Use geometric sampling and adaptive refinement.
+
+The method should:
+
+1. Start with a configurable workload size.
+2. Increase sizes geometrically to explore a wide range.
+3. Respect a configurable maximum workload size and measurement budget.
+4. Repeat measurements and summarize timing variability.
+5. Identify intervals where the CPU/GPU performance relationship changes or is uncertain.
+6. Allocate more measurements to informative intervals.
+7. Refine candidate boundaries.
+8. Verify candidate crossover points using fresh measurements.
+9. Report uncertainty and stopping conditions.
+
+Do not assume there must be exactly one crossover.
+
+If performance is non-monotonic, inspect the sampled regions and report any observed transitions the measurement budget supports. Do not claim to have found every crossover if the sampling could have missed one.
+
+If the GPU never becomes consistently faster within the tested range, report that result honestly.
+
+Respect workload constraints such as matrix dimensions and supported input sizes.
+
+Use simple, understandable search logic. Explain the algorithm in the documentation.
+
+## 12. Fair experimental evaluation
+
+Compare the formula-based predictor against the adaptive empirical method.
+
+For each workload and timing mode, record:
+
+- Predicted crossover, if one exists.
+- Empirically observed crossover, if one exists.
+- Absolute prediction error.
+- Relative prediction error when meaningful.
+- Number of benchmark configurations tested.
+- Total calibration time.
+- Timing variability around the predicted boundary.
+- Correctness of CPU and GPU results.
+
+Separate calibration data from validation data.
+
+Fit the model using calibration measurements, then evaluate its predictions on independently collected measurements. Do not use the same measurements both to fit and validate the model.
+
+Use a reasonable fixed measurement protocol so the comparison is fair.
+
+Compare both approaches against a simple fixed-threshold baseline when useful.
+
+Do not declare the formula successful or unsuccessful based on one run or one workload.
+
+Use actual CSV output and document the conclusions, including limitations.
+
+If the formula performs well on some workloads and poorly on others, investigate those differences rather than forcing a universal conclusion.
+
+## 13. Measurement reliability
+
+- Validate CPU and GPU outputs before accepting timing results.
+- Repeat measurements and use medians rather than single samples.
+- Record sufficient information to reproduce experiments.
+- Use practical workload sizes for the available GPU memory.
+- Handle allocation failures and invalid workload sizes.
+- Ensure both implementations use reasonable and documented compiler optimization settings.
+- Explain the effects of GPU clocks, thermal conditions, power limits, CPU background activity, and measurement noise.
+- Avoid comparing debug and optimized builds as if they were equivalent.
+- Never fabricate results.
+
+Keep initialization, allocation, data transfers, kernel execution, and synchronization costs clearly defined.
+
+## 14. Testing external programs
+
+Validate CudaGauge at three levels.
+
+### Level 1: Built-in workloads
+
+Test vector addition, reduction, and matrix multiplication.
+
+Use these workloads to validate the library's timing, search, and prediction behavior.
+
+### Level 2: Independent sample application
+
+Create a separate example application that consumes the public library API as an external developer would.
+
+It must demonstrate registering CPU and CUDA implementations, providing workloads, running calibration, and exporting results.
+
+Keep the example separate from the library's internal implementation.
+
+### Level 3: Third-party application
+
+If practical, integrate CudaGauge into a small, suitable open-source C++/CUDA application.
+
+Respect its license, document the changes required, and report any integration limitations.
+
+Do not modify or overwrite unrelated code.
+
+Do not claim universal third-party compatibility if only a limited example has been tested.
+
+If a suitable third-party project cannot be integrated within the available environment or time, complete the independent example and document what remains necessary.
+
+## 15. Documentation and final deliverables
+
+At completion, provide:
+
+- Complete source code and build configuration.
+- Reusable C++/CUDA library.
+- Command-line application.
+- Public API and integration example.
+- Correctness and integration tests.
+- Actual benchmark data in CSV format.
+- File-by-file explanations.
+- Explanation index and glossary.
+- Experiment log and design-decision log.
+- README with build, usage, and integration instructions.
+- Final study guide explaining the architecture, mathematical model, CUDA concepts, testing methodology, and limitations.
+
+The README should explain how a developer integrates CudaGauge into an existing application.
+
+Clearly distinguish actual benchmark results from illustrative examples.
+
+## 16. Git and project hygiene
+
+Inspect the existing Git repository before making changes.
+
+Preserve existing work and avoid overwriting unrelated files.
+
+Use clear, small commits if Git is configured and I have authorized the workflow.
+
+Do not commit generated binaries, large temporary datasets, or build artifacts.
+
+Keep explanations and experiment records synchronized with implementation changes.
+
+## 17. Final operating instructions
+
+Inspect the environment, then implement the project through completion without pausing after every stage.
+
+Do not ask me to approve routine implementation decisions.
+
+Do not skip documentation or tests to save time.
+
+Do not generate unnecessary features.
+
+If a requirement cannot be completed, explain why and leave the project in a working state with the limitation documented.
+
+When finished, provide a concise summary of what was built, the commands to compile and run it, the actual tests performed, the location of the explanation documents, and any unfinished requirements.
+
+**The highest priority is a working, understandable, experimentally honest C++/CUDA library that developers can integrate into their own projects. Every line should be something I can learn and explain.**
